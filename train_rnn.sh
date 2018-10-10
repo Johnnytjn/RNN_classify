@@ -7,4 +7,5 @@ python3 -m train_rnn \
 --embeddding_size=256 \
 --self_attention=True \
 --optimizer=AdamOptimizer \
---rnn_cell_name=LSTM
+--rnn_cell_name=LSTM \
+--vector_path=/home/wzh/PycharmProjects/tongjianing/vectors.txt

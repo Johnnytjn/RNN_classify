@@ -5,7 +5,7 @@ import argparse
 import config
 import logging
 import os
-
+import gensim
 import numpy as np
 import time
 import tensorflow as tf
@@ -57,7 +57,8 @@ if __name__ == '__main__':
     parser.add_argument('-residual_layers','--residual_layers', type=int, nargs='?',
                         default=0)   
     parser.add_argument("--rnn_cell_name", type = str, default = 'LSTM',help="LSTM | GRU | Weight_LSTM")
-    parser.add_argument("--attn_len", type=int, default=40, help="self attention length")   
+    parser.add_argument("--attn_len", type=int, default=40, help="self attention length") 
+    parser.add_argument("--vector_path",type=str, default=None, hekp="loading GloVe vectors")  
     parser.add_argument("--optimizer", type=str, default='AdamOptimizer', help="AdamOptimizer | AdagradOptimizer")
     args = parser.parse_args()
     
@@ -76,11 +77,12 @@ if __name__ == '__main__':
             steps_per_eval  = args.steps_per_eval ,
             checkpoint_dir = args.checkpoint_dir,
             seq_len = args.seq_len,
-            batch_num = args.batch_num
+            batch_num = args.batch_num,
+            vector_path = args.vector_path
     )
     
     
-
+    hparams = create_hparams(args)
     # load train data
     logger.info("start load load")
     train_data_df = load_data_from_csv(config.train_data_path)
@@ -94,9 +96,9 @@ if __name__ == '__main__':
 
     logger.info("prepare train format")
     logger.info("construct embeddings for every sentence")
-    import gensim
-    path='/home/wzh/PycharmProjects/tongjianing/vectors.txt'
-    w2v_model=gensim.models.KeyedVectors.load_word2vec_format(fname=path)
+    
+    
+    w2v_model=gensim.models.KeyedVectors.load_word2vec_format(fname=hparams.vector_path)
     vocabulary = w2v_model.vocab
     embedding_train_all_text = []
     for line in train_text:
@@ -107,10 +109,10 @@ if __name__ == '__main__':
                 
             else:
                 embedding_one_text.append([0]*50)
-        if len(embedding_one_text) >= seq_len:
-            embedding_one_text = embedding_one_text[:seq_len]
+        if len(embedding_one_text) >= hparams.seq_len:
+            embedding_one_text = embedding_one_text[:hparams.seq_len]
         else:
-            for i in range(seq_len - len(embedding_one_text)):
+            for i in range(hparams.seq_len - len(embedding_one_text)):
                 embedding_one_text.append([0]*50)
         embedding_train_all_text.append(embedding_one_text)
     embedding_train_all_text = np.asarray(embedding_train_all_text)
@@ -120,7 +122,6 @@ if __name__ == '__main__':
     columns = train_data_df.columns.values.tolist()
     logger.info("start train model")
     classifier_dict = dict()
-    hparams = create_hparams(args)
     hparams.add_hparam("vocab_size",60391)
     save_hparams(args.checkpoint_dir, hparams)
     for column in columns[2:]:
@@ -136,17 +137,17 @@ if __name__ == '__main__':
 
         train_model.init_model(train_sess, initializer = initializer)
                 
-        print("# Start to train with learning rate {0}, {1}".format(learning_rate,time.ctime()))
+        print("# Start to train with learning rate {0}, {1}".format(hparams.learning_rate,time.ctime()))
 
         global_step = train_sess.run(train_model.global_step)
-        for epoch in range(num_train_epoch):
+        for epoch in range(hparams.num_train_epoch):
             state  = train_sess.run(train_model.initial_state)
             checkpoint_loss, average_acc,batch_num = 0.0, 0.0,0
             best_eval = 0.0
             eval_accuracy = []
             for i in range(batch_num):
-                start_id = i * batch_size
-                end_id = min((i + 1) * batch_size, 10500)
+                start_id = i * hparams.batch_size
+                end_id = min((i + 1) * hparams.batch_size, 10500)
                 x=embedding_train_all_text[start_id:end_id], y=train_label[start_id:end_id]
                 batch_num += 1
                 add_summary = (global_step % steps_per_summary == 0)
@@ -177,7 +178,7 @@ if __name__ == '__main__':
     model_path = config.model_path
     if not os.path.exists(model_path):
         os.makedirs(model_path)
-    joblib.dump(classifier_dict, model_path + model_name)
+    joblib.dump(classifier_dict, model_path + hparams.model_name)
     logger.info("complete save model")
 
     # # validata model
